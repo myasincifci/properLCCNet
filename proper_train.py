@@ -1,5 +1,6 @@
 from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
 
+
 def main():
     _config = {
         'checkpoints': './checkpoints/',

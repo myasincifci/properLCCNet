@@ -51,15 +51,21 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         self.suf = suf
 
         self.all_files = []
-        self.sequence_list = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
-                              '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
+        self.sequence_list = ['00']
+
+        # TODO: write function to extract from calib.txt file
+        P0 = torch.tensor([957.5924619296435, 0.0, 959.3565786290242, 0.0, 0.0, 959.2310844319446, 643.6836005728799, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=torch.float32).view((3,4))
+        T_l = torch.tensor([-0.036, -0.033, -0.999, -0.900, 0.923, -0.384, -0.021, 0.100, -0.383, -0.923, 0.044, -0.480, 0.000, 0.000, 0.000, 1.000], dtype=torch.float32)
+        T_r = torch.tensor([0.040, 0.038, 0.998, 0.868, -0.928, -0.369, 0.051, 0.552, 0.370, -0.929, 0.021, -0.677, 0.000, 0.000, 0.000, 1.000], dtype=torch.float32)
 
         for seq in self.sequence_list:
-            odom = odometry(self.root_dir, seq)
+            # odom = odometry(self.root_dir, seq)
 
             # Save calibration matrices for each sequence
-            self.K[seq] = odom.calib.K_cam2 # 3x3
-            self.GTs_T_cam02_velo[seq] = odom.calib.T_cam2_velo # velodyne to rectified camera coordinate transform (T_cam02_velo: 4x4)
+            # self.K[seq] = odom.calib.K_cam2 # 3x3
+            # self.GTs_T_cam02_velo[seq] = odom.calib.T_cam2_velo # velodyne to rectified camera coordinate transform (T_cam02_velo: 4x4)
+            self.K[seq] = P0[0:3, 0:3]
+            self.GTs_T_cam02_velo[seq] = T_l.view((4,4))
 
             # Build list of paths images and pointclouds
             image_list = os.listdir(os.path.join(dataset_dir, 'sequences', seq, 'image_2'))
@@ -82,6 +88,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
                     self.all_files.append(os.path.join(seq, image_name.split('.')[0]))
 
         # Create RT files for validation sequences, whatever that is
+        # RT file saves randomly generated ground truth rotations and translation to stay consistens between evals.
         self.val_RT = []
         if split == 'val' or split == 'test':
             val_RT_file = os.path.join(dataset_dir, 'sequences',
@@ -277,7 +284,7 @@ def main():
     _config = {
         'checkpoints': './checkpoints/',
         'dataset': 'kitti/odom', # 'kitti/raw'
-        'data_folder': './data/data_odometry_color/dataset',
+        'data_folder': './data/dataset_l_r',
         'use_reflectance': False,
         'val_sequence': 0,
         'epochs': 120,
@@ -311,6 +318,8 @@ def main():
         use_reflectance=_config['use_reflectance'],
         val_sequence=_config['val_sequence']
     )
+
+    a=1
 
 if __name__ == '__main__':
     main()
