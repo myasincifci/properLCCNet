@@ -9,6 +9,8 @@
 # Modified Author: Xudong Lv
 # based on github.com/cattaneod/CMRNet/blob/master/DatasetVisibilityKitti.py
 
+import matplotlib.pyplot as plt
+
 import csv
 import os
 from math import radians
@@ -51,7 +53,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         self.suf = suf
 
         self.all_files = []
-        self.sequence_list = ['00']
+        self.sequence_list = ['00', '01']
 
         # TODO: write function to extract from calib.txt file
         P0 = torch.tensor([957.5924619296435, 0.0, 959.3565786290242, 0.0, 0.0, 959.2310844319446, 643.6836005728799, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=torch.float32).view((3,4))
@@ -122,9 +124,21 @@ class DatasetLidarCameraKittiOdometry(Dataset):
     # Retrieves ground truth poses  
     def get_ground_truth_poses(self, sequence, frame):
         return self.GTs_T[sequence][frame], self.GTs_R[sequence][frame]
+    
+    def plot_3d(self, x, y, z):
+        fig = plt.figure(figsize=(12, 12))
+        ax = fig.add_subplot(projection='3d')
+
+        ax.scatter(x, y, z)
+        plt.show()
 
     # Applies a transformation to the rgb image
     def custom_transform(self, rgb, img_rotation=0., flip=False):
+        resize_img =  transforms.Compose([
+            transforms.CenterCrop((581, 1920)),
+            transforms.Resize((376, 1241))
+        ])
+                
         to_tensor = transforms.ToTensor()
         normalization = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
@@ -136,6 +150,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
                 rgb = TTF.hflip(rgb)
             rgb = TTF.rotate(rgb, img_rotation)
 
+        rgb = resize_img(rgb)
         rgb = to_tensor(rgb)
         rgb = normalization(rgb)
         return rgb
@@ -150,7 +165,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
 
         img_path = os.path.join(self.root_dir, 'sequences', seq, 'image_2', rgb_name+self.suf)
         lidar_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne', rgb_name+'.bin')
-        lidar2_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne', rgb_name+'.bin') # TODO: change to lidar_ and lidar_r
+        lidar2_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne_r', rgb_name+'.bin') # TODO: change to lidar_ and lidar_r
 
         lidar_scan = np.fromfile(lidar_path, dtype=np.float32) # load to numpy array from file
         lidar_scan2 = np.fromfile(lidar2_path, dtype=np.float32) # load to numpy array from file
@@ -173,7 +188,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         pc2 = pc2[valid_indices2].copy()
         pc2_org = torch.from_numpy(pc2.astype(np.float32)) # make torch tensor
 
-        RT = self.GTs_T_cam02_velo[seq].astype(np.float32) # TODO: transformation will be different once we have two lidars
+        RT = self.GTs_T_cam02_velo[seq].to(torch.float32) # TODO: transformation will be different once we have two lidars
 
         if pc_org.shape[1] == 4 or pc_org.shape[1] == 3: # Make pointcloud 3XN tensor instead of Nx3
             pc_org = pc_org.t()
@@ -192,11 +207,13 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         else:
             raise TypeError("Wrong PointCloud shape")
         
-        pc_rot = np.matmul(RT, pc_org.numpy()) # move points to camera coordinates, rotation and translation
+        # pc_rot = np.matmul(np.linalg.inv(RT), pc_org.numpy()) # move points to camera coordinates, rotation and translation
+        pc_rot = pc_org.numpy()
         pc_rot = pc_rot.astype(np.float32).copy()
         pc_in = torch.from_numpy(pc_rot)
 
-        pc2_rot = np.matmul(RT, pc2_org.numpy()) # move points to camera coordinates, rotation and translation TODO: change to RT2
+        # pc2_rot = np.matmul(np.linalg.inv(RT), pc2_org.numpy()) # move points to camera coordinates, rotation and translation TODO: change to RT2
+        pc2_rot = pc2_org.numpy()
         pc2_rot = pc2_rot.astype(np.float32).copy()
         pc2_in = torch.from_numpy(pc2_rot)
 
@@ -246,11 +263,15 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         calib = self.K[seq] # K is camera intrinsic transform
         if h_mirror: # hard coded false
             calib[2] = (img.shape[2] / 2)*2 - calib[2]
+            
+        diff = 20_000 - pc_in.shape[1]
+        _pc = torch.cat([pc_in, pc_in[:,:diff]], dim=1)
 
         if self.split == 'test':
             sample = {
                         'rgb': img, # RGB Image
                         'point_cloud': pc_in, # Lidar Image
+                        # 'point_cloud': _pc,
                         'point_cloud2': pc2_in,
                         'calib': calib, # Camera Intrinsic 
                         'tr_error': T, 
@@ -267,8 +288,9 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         else:
             sample = {
                         'rgb': img, 
-                        'point_cloud': pc_in, 
-                        'point_cloud2': pc2_in,
+                        # 'point_cloud': pc_in,
+                        'point_cloud': _pc,
+                        # 'point_cloud2': _pc,
                         'calib': calib,
                         'tr_error': T, 
                         'rot_error': R, 
@@ -284,9 +306,9 @@ def main():
     _config = {
         'checkpoints': './checkpoints/',
         'dataset': 'kitti/odom', # 'kitti/raw'
-        'data_folder': './data/dataset_l_r',
+        'data_folder': './data/dataset_l_r_fix',
         'use_reflectance': False,
-        'val_sequence': 0,
+        'val_sequence': '00',
         'epochs': 120,
         'BASE_LEARNING_RATE': 3e-4,  # 1e-4,
         'loss': 'combined',
@@ -314,10 +336,12 @@ def main():
         _config['data_folder'], 
         max_r=_config['max_r'], 
         max_t=_config['max_t'],
-        split='train', 
+        split='val', 
         use_reflectance=_config['use_reflectance'],
         val_sequence=_config['val_sequence']
     )
+
+    dataset.__getitem__(0)
 
     a=1
 

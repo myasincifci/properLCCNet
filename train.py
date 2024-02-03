@@ -9,6 +9,10 @@
 # Modified Author: Xudong Lv
 # based on github.com/cattaneod/CMRNet/blob/master/main_visibility_CALIB.py
 
+from torchvision import transforms
+
+import matplotlib.pyplot as plt
+
 import math
 import os
 import random
@@ -30,7 +34,8 @@ from sacred.utils import apply_backspaces_and_linefeeds
 from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG = False
 
-from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
+# from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
+from DatasetLidarCameraProper import DatasetLidarCameraKittiOdometry
 from losses import DistancePoints3D, GeometricLoss, L1Loss, ProposedLoss, CombinedLoss
 from models.LCCNet import LCCNet
 
@@ -53,20 +58,20 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 def config():
     checkpoints = './checkpoints/'
     dataset = 'kitti/odom' # 'kitti/raw'
-    data_folder = './data/data_odometry_color/dataset'
+    data_folder = './data/dataset_l_r_fix'
     use_reflectance = False
     val_sequence = 0
-    epochs = 120
+    epochs = 240
     BASE_LEARNING_RATE = 3e-4  # 1e-4
     loss = 'combined'
     max_t = 0.1 # 1.5, 1.0,  0.5,  0.2,  0.1
     max_r = 1. # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 32
-    num_worker = 6
+    batch_size = 16
+    num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
     resume = True
-    weights = None#'./pretrained/kitti_iter5.tar'
+    weights = './pretrained/kitti_iter5.tar'
     rescale_rot = 1.0
     rescale_transl = 2.0
     precision = "O0"
@@ -176,6 +181,20 @@ def val(model, rgb_img, refl_img, target_transl, target_rot, loss_fn, point_clou
 
     return losses, total_trasl_error.item(), total_rot_error.sum().item(), rot_err, transl_err
 
+def plot_3d(x, y, z):
+    fig = plt.figure(figsize=(12, 12))
+    ax = fig.add_subplot(projection='3d')
+
+    ax.scatter(x, y, z)
+    plt.show()
+
+def plot_both(rgb, lidar):
+    rgb = rgb.detach().cpu()
+    lidar = lidar.detach().cpu()
+
+    f, ax = plt.subplots(2)
+    ax[0].imshow(rgb.permute(1,2,0))
+    ax[1].imshow(lidar[0])
 
 @ex.automain
 def main(_config, _run, seed):
@@ -386,11 +405,13 @@ def main(_config, _run, seed):
                 if _config['max_depth'] < 80.:
                     pc_rotated = pc_rotated[:, pc_rotated[0, :] < _config['max_depth']].clone()
 
-                depth_img, uv = lidar_project_depth(pc_rotated, sample['calib'][idx], real_shape) # image_shape
+                depth_img, uv = lidar_project_depth(pc_rotated, sample['calib'][idx], [1208, 1920, 3])#real_shape) # image_shape
                 depth_img /= _config['max_depth']
 
                 # PAD ONLY ON RIGHT AND BOTTOM SIDE
-                rgb = sample['rgb'][idx].cuda()
+
+                rgb = sample['rgb'][idx].cuda()             
+
                 shape_pad = [0, 0, 0, 0]
 
                 shape_pad[3] = (img_shape[0] - rgb.shape[1])  # // 2

@@ -36,7 +36,8 @@ import time
 
 # from models.LCCNet import LCCNet
 from models.LCCNetDouble import LCCNet
-from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
+# from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
+from DatasetLidarCameraProper import DatasetLidarCameraKittiOdometry
 
 from quaternion_distances import quaternion_distance
 from utils import (mat2xyzrpy, merge_inputs, overlay_imgs, quat2mat,
