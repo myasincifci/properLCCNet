@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from matplotlib import cm
 from torch.utils.data.dataloader import default_collate
 
+from torchvision import transforms
 
 def rotate_points(PC, R, T=None, inverse=True):
     if T is not None:
@@ -272,6 +273,16 @@ def overlay_imgs(rgb, lidar, idx=0):
     rgb = rgb.clone().cpu().permute(1,2,0).numpy()
     rgb = rgb*std+mean
     lidar = lidar.clone()
+
+    TF = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.CenterCrop((581, 1920)),
+        transforms.Resize((384, 1280)),
+        transforms.ToTensor()
+    ])
+
+    lidar = TF(lidar.cpu()[0])[None]
+    lidar = lidar.cuda()
 
     lidar[lidar == 0] = 1000.
     lidar = -lidar

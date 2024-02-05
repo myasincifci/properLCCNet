@@ -71,7 +71,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 def config():
     dataset = 'kitti/odom'
     # data_folder = '/home/wangshuo/Datasets/KITTI/odometry_color/'
-    data_folder = './data/dataset_l_r'
+    data_folder = './data/dataset_small'
     test_sequence = 0
     use_prev_output = False
     max_t = 1.5
@@ -103,12 +103,27 @@ weights = [
    './pretrained/kitti_iter3.tar',
    './pretrained/kitti_iter4.tar',
    './pretrained/kitti_iter5.tar',
+   './pretrained/custom.tar'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 EPOCH = 1
 
+def plot_3d(x, y, z):
+    fig = plt.figure(figsize=(12, 12))
+    ax = fig.add_subplot(projection='3d')
+
+    ax.scatter(x, y, z)
+    plt.show()
+
+def plot_both(rgb, lidar):
+    rgb = rgb.detach().cpu()
+    lidar = lidar.detach().cpu()
+
+    f, ax = plt.subplots(2)
+    ax[0].imshow(rgb.permute(1,2,0))
+    ax[1].imshow(lidar[0])
 
 def _init_fn(worker_id, seed):
     seed = seed + worker_id + EPOCH * 100
@@ -315,7 +330,9 @@ def main(_config, seed):
 
         for idx in range(len(sample['rgb'])):
             # ProjectPointCloud in RT-pose
-            real_shape = [sample['rgb'][idx].shape[1], sample['rgb'][idx].shape[2], sample['rgb'][idx].shape[0]]
+            # real_shape = [sample['rgb'][idx].shape[1], sample['rgb'][idx].shape[2], sample['rgb'][idx].shape[0]]
+            # real_shape = [581, 1920]
+            real_shape = [1208, 1920]
 
             sample['point_cloud'][idx] = sample['point_cloud'][idx].cuda()  # 变换到相机坐标系下的激光雷达点云
             pc_lidar = sample['point_cloud'][idx].clone()
@@ -325,6 +342,16 @@ def main(_config, seed):
 
             depth_gt, uv_gt, pc_gt_valid = lidar_project_depth(pc_lidar, sample['calib'][idx], real_shape)  # image_shape
             depth_gt /= _config['max_depth']
+
+            TF = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.CenterCrop((581, 1920)),
+                transforms.Resize((376, 1241)),
+                transforms.ToTensor()
+            ])
+
+            depth_gt = TF(depth_gt.cpu())
+            depth_gt = depth_gt.cuda()
 
             if _config['save_image']:
                 # save the Lidar pointcloud

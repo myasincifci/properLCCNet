@@ -143,7 +143,8 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         normalization = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
 
-        if self.split == 'train':
+        if False:
+        # if self.split == 'train':
             color_transform = transforms.ColorJitter(0.1, 0.1, 0.1)
             rgb = color_transform(rgb)
             if flip:
@@ -270,9 +271,9 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         if self.split == 'test':
             sample = {
                         'rgb': img, # RGB Image
-                        'point_cloud': pc_in, # Lidar Image
+                        'point_cloud': _pc, # Lidar Image
                         # 'point_cloud': _pc,
-                        'point_cloud2': pc2_in,
+                        'point_cloud2': _pc,
                         'calib': calib, # Camera Intrinsic 
                         'tr_error': T, 
                         'rot_error': R, 

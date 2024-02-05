@@ -58,15 +58,15 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 def config():
     checkpoints = './checkpoints/'
     dataset = 'kitti/odom' # 'kitti/raw'
-    data_folder = './data/dataset_l_r_fix'
+    data_folder = './data/dataset_small'
     use_reflectance = False
     val_sequence = 0
-    epochs = 240
-    BASE_LEARNING_RATE = 3e-4  # 1e-4
+    epochs = 500
+    BASE_LEARNING_RATE = 1e-4  # 1e-4
     loss = 'combined'
     max_t = 0.1 # 1.5, 1.0,  0.5,  0.2,  0.1
     max_r = 1. # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 16
+    batch_size = 21
     num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
@@ -344,6 +344,7 @@ def main(_config, _run, seed):
 
     start_full_time = time.time()
     BEST_VAL_LOSS = 10000.
+    BEST_TRAIN_LOSS = 10_000.
     old_save_filename = None
 
     train_iter = 0
@@ -394,6 +395,16 @@ def main(_config, _run, seed):
 
                 depth_gt, uv = lidar_project_depth(pc_lidar, sample['calib'][idx], real_shape) # image_shape
                 depth_gt /= _config['max_depth']
+
+                TF = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.CenterCrop((581, 1920)),
+                    transforms.Resize((376, 1241)),
+                    transforms.ToTensor()
+                ])
+
+                depth_gt = TF(depth_gt.cpu())
+                depth_gt = depth_gt.cuda()
 
                 R = mathutils.Quaternion(sample['rot_error'][idx]).to_matrix()
                 R.resize_4x4()
