@@ -37,7 +37,8 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG = False
 # from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
 from DatasetLidarCameraProper import DatasetLidarCameraKittiOdometry
 from losses import DistancePoints3D, GeometricLoss, L1Loss, ProposedLoss, CombinedLoss
-from models.LCCNet import LCCNet
+# from models.LCCNet import LCCNet
+from models.LCCNetDouble import LCCNet
 
 from quaternion_distances import quaternion_distance
 
@@ -66,7 +67,7 @@ def config():
     loss = 'combined'
     max_t = 0.5 # 1.5, 1.0,  0.5,  0.2,  0.1
     max_r = 5. # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 40
+    batch_size = 20
     num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
@@ -127,13 +128,13 @@ def lidar_project_depth(pc_rotated, cam_calib, img_shape):
 
 # CCN training
 @ex.capture
-def train(model, optimizer, rgb_img, refl_img, target_transl, target_rot, loss_fn, point_clouds, loss):
+def train(model, optimizer, rgb_img, refl_img, refl_img_R, target_transl, target_rot, loss_fn, point_clouds, loss):
     model.train()
 
     optimizer.zero_grad()
 
     # Run model
-    transl_err, rot_err = model(rgb_img, refl_img)
+    transl_err, rot_err = model(rgb_img, refl_img, refl_img_R)
 
     if loss == 'points_distance' or loss == 'combined':
         losses = loss_fn(point_clouds, target_transl, target_rot, transl_err, rot_err)
@@ -148,12 +149,12 @@ def train(model, optimizer, rgb_img, refl_img, target_transl, target_rot, loss_f
 
 # CNN test
 @ex.capture
-def val(model, rgb_img, refl_img, target_transl, target_rot, loss_fn, point_clouds, loss):
+def val(model, rgb_img, refl_img, refl_img2, target_transl, target_rot, loss_fn, point_clouds, loss):
     model.eval()
 
     # Run model
     with torch.no_grad():
-        transl_err, rot_err = model(rgb_img, refl_img)
+        transl_err, rot_err = model(rgb_img, refl_img, refl_img2)
 
     if loss == 'points_distance' or loss == 'combined':
         losses = loss_fn(point_clouds, target_transl, target_rot, transl_err, rot_err)
@@ -371,11 +372,14 @@ def main(_config, _run, seed):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []
+            lidar_input_R = []
             rgb_input = []
             lidar_gt = []
+            lidar_gt_R = []
             shape_pad_input = []
             real_shape_input = []
             pc_rotated_input = []
+            pc_rotated_input_R = []
 
             # gt pose
             sample['tr_error'] = sample['tr_error'].cuda()
@@ -387,14 +391,20 @@ def main(_config, _run, seed):
                 # real_shape = [sample['rgb'][idx].shape[1], sample['rgb'][idx].shape[2], sample['rgb'][idx].shape[0]]
                 real_shape = [1208, 1920]
 
-                sample['point_cloud'][idx] = sample['point_cloud'][idx].cuda() # 变换到相机坐标系下的激光雷达点云
+                sample['point_cloud'][idx] = sample['point_cloud'][idx].cuda() # LiDAR-Punktwolke in Kamerakoordinatensystem umgewandelt
+                sample['point_cloud2'][idx] = sample['point_cloud2'][idx].cuda()
                 pc_lidar = sample['point_cloud'][idx].clone()
+                pc_lidar_R = sample['point_cloud2'][idx].clone()
 
                 if _config['max_depth'] < 80.:
                     pc_lidar = pc_lidar[:, pc_lidar[0, :] < _config['max_depth']].clone()
+                    pc_lidar_R = pc_lidar_R[:, pc_lidar_R[0, :] < _config['max_depth']].clone()
 
                 depth_gt, uv = lidar_project_depth(pc_lidar, sample['calib'][idx], real_shape) # image_shape
                 depth_gt /= _config['max_depth']
+
+                depth_gt_R, uv_R = lidar_project_depth(pc_lidar_R, sample['calib'][idx], real_shape) # image_shape
+                depth_gt_R /= _config['max_depth']
 
                 TF = transforms.Compose([
                     transforms.ToPILImage(),
@@ -406,21 +416,33 @@ def main(_config, _run, seed):
                 depth_gt = TF(depth_gt.cpu())
                 depth_gt = depth_gt.cuda()
 
+                depth_gt_R = TF(depth_gt_R.cpu())
+                depth_gt_R = depth_gt_R.cuda()
+
                 R = mathutils.Quaternion(sample['rot_error'][idx]).to_matrix()
                 R.resize_4x4()
                 T = mathutils.Matrix.Translation(sample['tr_error'][idx])
                 RT = T * R
 
+                R_R = mathutils.Quaternion(sample['rot_error2'][idx]).to_matrix()
+                R_R.resize_4x4()
+                T_R = mathutils.Matrix.Translation(sample['tr_error2'][idx])
+                RT_R = T_R * R_R
+
                 pc_rotated = rotate_back(sample['point_cloud'][idx], RT) # Pc` = RT * Pc
+                pc_rotated_R = rotate_back(sample['point_cloud2'][idx], RT_R) # Pc` = RT * Pc
 
                 if _config['max_depth'] < 80.:
                     pc_rotated = pc_rotated[:, pc_rotated[0, :] < _config['max_depth']].clone()
+                    pc_rotated_R = pc_rotated_R[:, pc_rotated_R[0, :] < _config['max_depth']].clone()
 
                 depth_img, uv = lidar_project_depth(pc_rotated, sample['calib'][idx], [1208, 1920, 3])#real_shape) # image_shape
                 depth_img /= _config['max_depth']
 
-                # PAD ONLY ON RIGHT AND BOTTOM SIDE
+                depth_img_R, uv_R = lidar_project_depth(pc_rotated_R, sample['calib'][idx], [1208, 1920, 3])#real_shape) # image_shape
+                depth_img_R /= _config['max_depth']
 
+                # PAD ONLY ON RIGHT AND BOTTOM SIDE
                 rgb = sample['rgb'][idx].cuda()             
 
                 shape_pad = [0, 0, 0, 0]
@@ -431,24 +453,36 @@ def main(_config, _run, seed):
                 rgb = F.pad(rgb, shape_pad)
                 depth_img = F.pad(depth_img, shape_pad)
                 depth_gt = F.pad(depth_gt, shape_pad)
+                depth_img_R = F.pad(depth_img_R, shape_pad)
+                depth_gt_R = F.pad(depth_gt_R, shape_pad)
 
                 rgb_input.append(rgb)
                 lidar_input.append(depth_img)
                 lidar_gt.append(depth_gt)
+                lidar_input_R.append(depth_img_R)
+                lidar_gt_R.append(depth_gt_R)
                 real_shape_input.append(real_shape)
                 shape_pad_input.append(shape_pad)
                 pc_rotated_input.append(pc_rotated)
+                pc_rotated_input_R.append(pc_rotated_R)
 
             lidar_input = torch.stack(lidar_input)
+            lidar_input_R = torch.stack(lidar_input_R)
             rgb_input = torch.stack(rgb_input)
             rgb_show = rgb_input.clone()
             lidar_show = lidar_input.clone()
+            lidar_show_R = lidar_input_R.clone()
             rgb_input = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
             lidar_input = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
+            lidar_input_R = F.interpolate(lidar_input_R, size=[256, 512], mode="bilinear")
             end_preprocess = time.time()
-            loss, R_predicted,  T_predicted = train(model, optimizer, rgb_input, lidar_input,
-                                                   sample['tr_error'], sample['rot_error'],
-                                                   loss_fn, sample['point_cloud'], _config['loss'])
+            loss, R_predicted,  T_predicted = train(model, optimizer, rgb_input, lidar_input, lidar_input_R,
+                                                   torch.cat((sample['tr_error'], sample['tr_error2'].cuda()), dim=0), 
+                                                   torch.cat((sample['rot_error'], sample['rot_error2'].cuda()), dim=0),
+                                                   loss_fn, 
+                                                   sample['point_cloud'] + sample['point_cloud2'],
+                                                   _config['loss']
+                                                )
 
             for key in loss.keys():
                 if loss[key].item() != loss[key].item():
@@ -616,9 +650,15 @@ def main(_config, _run, seed):
             rgb_input = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
             lidar_input = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
 
-            loss, trasl_e, rot_e, R_predicted,  T_predicted = val(model, rgb_input, lidar_input,
-                                                                  sample['tr_error'], sample['rot_error'],
-                                                                  loss_fn, sample['point_cloud'], _config['loss'])
+            # model, rgb_img, refl_img, refl_img2, target_transl, target_rot, loss_fn, point_clouds, loss
+            loss, trasl_e, rot_e, R_predicted,  T_predicted = val(model, rgb_input, lidar_input, lidar_input_R.cuda(),
+                                                                  torch.cat((sample['tr_error'].cuda(), sample['tr_error2'].cuda()), dim=0), 
+                                                                  torch.cat((sample['rot_error'].cuda(), sample['rot_error2'].cuda()), dim=0),
+                                                                  loss_fn.cuda(),
+                                                                  sample['point_cloud'] + sample['point_cloud2'], 
+                                                                  _config['loss'],
+                                                                )
+
 
             for key in loss.keys():
                 if loss[key].item() != loss[key].item():

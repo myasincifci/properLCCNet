@@ -474,21 +474,21 @@ class LCCNet(nn.Module):
 
         # lidar_comb = lidar1
 
-        print()
-        print("lidar1.size()")
-        print(lidar1.size())
+        # print()
+        # print("lidar1.size()")
+        # print(lidar1.size())
         
         #double rgb
         rgb = torch.cat((rgb, rgb), dim=0)
-        print()
-        print("rgb double.size()")
-        print(rgb.size())
+        # print()
+        # print("rgb double.size()")
+        # print(rgb.size())
 
         #define new lidar connecting lidar1 and lidar2
         lidar_comb = torch.cat((lidar1, lidar2), dim=0)
-        print()
-        print("lidar_comb.size()")
-        print(lidar_comb.size())
+        # print()
+        # print("lidar_comb.size()")
+        # print(lidar_comb.size())
 
 
         #encoder
@@ -532,14 +532,14 @@ class LCCNet(nn.Module):
 
         #corr6 = self.corr(c16, c26)
             
-        print()
-        print("c16.size()")
-        print(c16.size())
-        print("c26.size()")
-        print(c26.size())
+        # print()
+        # print("c16.size()")
+        # print(c16.size())
+        # print("c26.size()")
+        # print(c26.size())
         corr6 = self.correlate(c16, c26)
-        print("corr6.size()")
-        print(corr6.size())
+        # print("corr6.size()")
+        # print(corr6.size())
         # print()
         # print("corr6 vor Relu")
         # print(corr6.size())

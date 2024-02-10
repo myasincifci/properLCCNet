@@ -118,16 +118,19 @@ def invert_pose(R, T):
 
 def merge_inputs(queries):
     point_clouds = []
+    point_clouds2 = []
     imgs = []
     reflectances = []
     returns = {key: default_collate([d[key] for d in queries]) for key in queries[0]
                if key != 'point_cloud' and key != 'rgb' and key != 'reflectance'}
     for input in queries:
         point_clouds.append(input['point_cloud'])
+        point_clouds2.append(input['point_cloud2'])
         imgs.append(input['rgb'])
         if 'reflectance' in input:
             reflectances.append(input['reflectance'])
     returns['point_cloud'] = point_clouds
+    returns['point_cloud2'] = point_clouds2
     returns['rgb'] = imgs
     if len(reflectances) > 0:
         returns['reflectance'] = reflectances
@@ -266,7 +269,7 @@ def to_rotation_matrix(R, T):
     return RT
 
 
-def overlay_imgs(rgb, lidar, idx=0):
+def overlay_imgs(rgb, lidar, idx=0, tf=True):
     std = [0.229, 0.224, 0.225]
     mean = [0.485, 0.456, 0.406]
 
@@ -274,15 +277,16 @@ def overlay_imgs(rgb, lidar, idx=0):
     rgb = rgb*std+mean
     lidar = lidar.clone()
 
-    TF = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.CenterCrop((581, 1920)),
-        transforms.Resize((384, 1280)),
-        transforms.ToTensor()
-    ])
+    if tf:
+        TF = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.CenterCrop((581, 1920)),
+            transforms.Resize((384, 1280)),
+            transforms.ToTensor()
+        ])
 
-    lidar = TF(lidar.cpu()[0])[None]
-    lidar = lidar.cuda()
+        lidar = TF(lidar.cpu()[0])[None]
+        lidar = lidar.cuda()
 
     lidar[lidar == 0] = 1000.
     lidar = -lidar

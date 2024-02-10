@@ -34,8 +34,8 @@ from skimage import io
 from tqdm import tqdm
 import time
 
-# from models.LCCNet import LCCNet
-from models.LCCNetDouble import LCCNet
+from models.LCCNet import LCCNet
+# from models.LCCNetDouble import LCCNet
 # from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
 from DatasetLidarCameraProper import DatasetLidarCameraKittiOdometry
 
@@ -74,8 +74,8 @@ def config():
     data_folder = './data/dataset_small'
     test_sequence = 0
     use_prev_output = False
-    max_t = 1.5
-    max_r = 20.
+    max_t = 0.5
+    max_r = 5.
     occlusion_kernel = 5
     occlusion_threshold = 3.0
     network = 'Res_f1'
@@ -98,12 +98,18 @@ def config():
     out_fig_lg = 'EN' # [EN, CN]
 
 weights = [
-   './pretrained/kitti_iter1.tar',
-   './pretrained/kitti_iter2.tar',
-   './pretrained/kitti_iter3.tar',
-   './pretrained/kitti_iter4.tar',
-   './pretrained/kitti_iter5.tar',
-   './pretrained/custom.tar'
+#    './pretrained/kitti_iter1.tar',
+#    './pretrained/kitti_iter2.tar',
+#    './pretrained/kitti_iter3.tar',
+#    './pretrained/kitti_iter4.tar',
+#    './pretrained/kitti_iter5.tar',
+    './pretrained/custom.tar',
+    './pretrained/custom.tar',
+    './pretrained/custom.tar',
+    './pretrained/custom.tar',
+    './pretrained/custom.tar',
+    './pretrained/custom.tar',
+
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -483,9 +489,9 @@ def main(_config, seed):
                 # Run the i-th network
                 t1 = time.time()
                 if _config['iterative_method'] == 'single_range' or _config['iterative_method'] == 'single':
-                    T_predicted, R_predicted = models[0](rgb_resize, lidar_resize, lidar_resize)
+                    T_predicted, R_predicted = models[0](rgb_resize, lidar_resize)
                 elif _config['iterative_method'] == 'multi_range':
-                    T_predicted, R_predicted = models[iteration](rgb_resize, lidar_resize, lidar_resize)
+                    T_predicted, R_predicted = models[iteration](rgb_resize, lidar_resize)
                 run_time = time.time() - t1
 
                 if _config['rot_transl_separated'] and iteration == 0:

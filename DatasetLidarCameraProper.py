@@ -48,7 +48,8 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         self.split = split
         self.GTs_R = {}
         self.GTs_T = {}
-        self.GTs_T_cam02_velo = {}
+        self.GTs_T_cam02_velo = {} # left lidar
+        self.GTs_T_cam02_velo_R = {}
         self.K = {}
         self.suf = suf
 
@@ -68,6 +69,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             # self.GTs_T_cam02_velo[seq] = odom.calib.T_cam2_velo # velodyne to rectified camera coordinate transform (T_cam02_velo: 4x4)
             self.K[seq] = P0[0:3, 0:3]
             self.GTs_T_cam02_velo[seq] = T_l.view((4,4))
+            self.GTs_T_cam02_velo_R[seq] = T_r.view((4,4))
 
             # Build list of paths images and pointclouds
             image_list = os.listdir(os.path.join(dataset_dir, 'sequences', seq, 'image_2'))
@@ -76,6 +78,9 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             for image_name in image_list:
                 # Skip if not both, image and pointcloud are present
                 if not os.path.exists(os.path.join(dataset_dir, 'sequences', seq, 'velodyne',
+                                                   str(image_name.split('.')[0])+'.bin')):
+                    continue
+                if not os.path.exists(os.path.join(dataset_dir, 'sequences', seq, 'velodyne_r',
                                                    str(image_name.split('.')[0])+'.bin')):
                     continue
                 if not os.path.exists(os.path.join(dataset_dir, 'sequences', seq, 'image_2',
@@ -92,9 +97,13 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         # Create RT files for validation sequences, whatever that is
         # RT file saves randomly generated ground truth rotations and translation to stay consistens between evals.
         self.val_RT = []
+        self.val_RT_R = []
         if split == 'val' or split == 'test':
             val_RT_file = os.path.join(dataset_dir, 'sequences',
                                        f'val_RT_left_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
+            val_RT_file_R = os.path.join(dataset_dir, 'sequences',
+                                       f'val_RT_right_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
+            
             if os.path.exists(val_RT_file):
                 print(f'VAL SET: Using this file: {val_RT_file}')
                 df_test_RT = pd.read_csv(val_RT_file, sep=',')
@@ -118,8 +127,33 @@ class DatasetLidarCameraKittiOdometry(Dataset):
                                            rotx, roty, rotz])
                     self.val_RT.append([float(i), float(transl_x), float(transl_y), float(transl_z),
                                          float(rotx), float(roty), float(rotz)])
+                    
+            if os.path.exists(val_RT_file_R):
+                print(f'VAL SET: Using this file: {val_RT_file_R}')
+                df_test_RT_R = pd.read_csv(val_RT_file_R, sep=',')
+                for index, row in df_test_RT_R.iterrows():
+                    self.val_RT_R.append(list(row))
+            else:
+                print(f'VAL SET - Not found: {val_RT_file_R}')
+                print("Generating a new one")
+                val_RT_file_R = open(val_RT_file_R, 'w')
+                val_RT_file_R = csv.writer(val_RT_file_R, delimiter=',')
+                val_RT_file_R.writerow(['id', 'tx', 'ty', 'tz', 'rx', 'ry', 'rz'])
+                for i in range(len(self.all_files)):
+                    rotz = np.random.uniform(-max_r, max_r) * (3.141592 / 180.0)
+                    roty = np.random.uniform(-max_r, max_r) * (3.141592 / 180.0)
+                    rotx = np.random.uniform(-max_r, max_r) * (3.141592 / 180.0)
+                    transl_x = np.random.uniform(-max_t, max_t)
+                    transl_y = np.random.uniform(-max_t, max_t)
+                    transl_z = np.random.uniform(-max_t, max_t)
 
-            assert len(self.val_RT) == len(self.all_files), "Something wrong with test RTs"
+                    val_RT_file_R.writerow([i, transl_x, transl_y, transl_z,
+                                           rotx, roty, rotz])
+                    self.val_RT_R.append([float(i), float(transl_x), float(transl_y), float(transl_z),
+                                         float(rotx), float(roty), float(rotz)])
+
+            assert len(self.val_RT) == len(self.all_files), "Something wrong with test RTs L"
+            assert len(self.val_RT_R) == len(self.all_files), "Something wrong with test RTs R"
     
     # Retrieves ground truth poses  
     def get_ground_truth_poses(self, sequence, frame):
@@ -166,7 +200,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
 
         img_path = os.path.join(self.root_dir, 'sequences', seq, 'image_2', rgb_name+self.suf)
         lidar_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne', rgb_name+'.bin')
-        lidar2_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne_r', rgb_name+'.bin') # TODO: change to lidar_ and lidar_r
+        lidar2_path = os.path.join(self.root_dir, 'sequences', seq, 'velodyne_r', rgb_name+'.bin')
 
         lidar_scan = np.fromfile(lidar_path, dtype=np.float32) # load to numpy array from file
         lidar_scan2 = np.fromfile(lidar2_path, dtype=np.float32) # load to numpy array from file
@@ -175,21 +209,22 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         pc2 = lidar_scan2.reshape((-1, 4))
 
         # Clip point-cloud
-        valid_indices = pc[:, 0] < -3.
-        valid_indices = valid_indices | (pc[:, 0] > 3.)
-        valid_indices = valid_indices | (pc[:, 1] < -3.)
-        valid_indices = valid_indices | (pc[:, 1] > 3.)
-        pc = pc[valid_indices].copy()
+        # valid_indices = pc[:, 0] < -3.
+        # valid_indices = valid_indices | (pc[:, 0] > 3.)
+        # valid_indices = valid_indices | (pc[:, 1] < -3.)
+        # valid_indices = valid_indices | (pc[:, 1] > 3.)
+        # pc = pc[valid_indices].copy()
         pc_org = torch.from_numpy(pc.astype(np.float32)) # make torch tensor
 
-        valid_indices2 = pc2[:, 0] < -3.
-        valid_indices2 = valid_indices2 | (pc2[:, 0] > 3.)
-        valid_indices2 = valid_indices2 | (pc2[:, 1] < -3.)
-        valid_indices2 = valid_indices2 | (pc2[:, 1] > 3.)
-        pc2 = pc2[valid_indices2].copy()
+        # valid_indices2 = pc2[:, 0] < -3.
+        # valid_indices2 = valid_indices2 | (pc2[:, 0] > 3.)
+        # valid_indices2 = valid_indices2 | (pc2[:, 1] < -3.)
+        # valid_indices2 = valid_indices2 | (pc2[:, 1] > 3.)
+        # pc2 = pc2[valid_indices2].copy()
         pc2_org = torch.from_numpy(pc2.astype(np.float32)) # make torch tensor
 
-        RT = self.GTs_T_cam02_velo[seq].to(torch.float32) # TODO: transformation will be different once we have two lidars
+        RT = self.GTs_T_cam02_velo[seq].to(torch.float32)
+        RT_R = self.GTs_T_cam02_velo_R[seq].to(torch.float32)
 
         if pc_org.shape[1] == 4 or pc_org.shape[1] == 3: # Make pointcloud 3XN tensor instead of Nx3
             pc_org = pc_org.t()
@@ -213,7 +248,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         pc_rot = pc_rot.astype(np.float32).copy()
         pc_in = torch.from_numpy(pc_rot)
 
-        # pc2_rot = np.matmul(np.linalg.inv(RT), pc2_org.numpy()) # move points to camera coordinates, rotation and translation TODO: change to RT2
+        # pc2_rot = np.matmul(np.linalg.inv(RT), pc2_org.numpy()) # move points to camera coordinates, rotation and translation 
         pc2_rot = pc2_org.numpy()
         pc2_rot = pc2_rot.astype(np.float32).copy()
         pc2_in = torch.from_numpy(pc2_rot)
@@ -235,6 +270,10 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             T = mathutils.Vector((0., 0., 0.))
             pc_in = rotate_forward(pc_in, R, T)
 
+            R_R = mathutils.Euler((radians(img_rotation), 0, 0), 'XYZ')
+            T_R = mathutils.Vector((0., 0., 0.))
+            pc2_in = rotate_forward(pc_in, R, T)
+
         if self.split == 'train': # Apply random error transform TODO: also for RT2
             max_angle = self.max_r
             rotz = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
@@ -243,6 +282,13 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             transl_x = np.random.uniform(-self.max_t, self.max_t)
             transl_y = np.random.uniform(-self.max_t, self.max_t)
             transl_z = np.random.uniform(-self.max_t, self.max_t)
+
+            rotz_R = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
+            roty_R = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
+            rotx_R = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
+            transl_x_R = np.random.uniform(-self.max_t, self.max_t)
+            transl_y_R = np.random.uniform(-self.max_t, self.max_t)
+            transl_z_R = np.random.uniform(-self.max_t, self.max_t)
 
         else:
             initial_RT = self.val_RT[idx]
@@ -253,52 +299,73 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             transl_y = initial_RT[2]
             transl_z = initial_RT[3]
 
+            initial_RT_R = self.val_RT_R[idx]
+            rotz_R = initial_RT_R[6]
+            roty_R = initial_RT_R[5]
+            rotx_R = initial_RT_R[4]
+            transl_x_R = initial_RT_R[1]
+            transl_y_R = initial_RT_R[2]
+            transl_z_R = initial_RT_R[3]
+
         R = mathutils.Euler((rotx, roty, rotz), 'XYZ') # convert rotation to euler TODO: also RT2
         T = mathutils.Vector((transl_x, transl_y, transl_z)) # convert translation to vector
+
+        R_R = mathutils.Euler((rotx_R, roty_R, rotz_R), 'XYZ') # convert rotation to euler TODO: also RT2
+        T_R = mathutils.Vector((transl_x_R, transl_y_R, transl_z_R)) # convert translation to vector
 
         # invert R and T because they are the random error we have applied and we want to predcit the transform that can fix the error.
         # So we pass them as the ground truth 
         R, T = invert_pose(R, T) 
         R, T = torch.tensor(R), torch.tensor(T)
 
+        R_R, T_R = invert_pose(R_R, T_R) 
+        R_R, T_R = torch.tensor(R_R), torch.tensor(T_R)
+
         calib = self.K[seq] # K is camera intrinsic transform
         if h_mirror: # hard coded false
             calib[2] = (img.shape[2] / 2)*2 - calib[2]
             
-        diff = 20_000 - pc_in.shape[1]
+        diff = 25_000 - pc_in.shape[1] # TODO: smaller value for upper
         _pc = torch.cat([pc_in, pc_in[:,:diff]], dim=1)
+
+        diff_R = 25_000 - pc2_in.shape[1]
+        _pc2 = torch.cat([pc2_in, pc2_in[:,:diff_R]], dim=1)
 
         if self.split == 'test':
             sample = {
                         'rgb': img, # RGB Image
                         'point_cloud': _pc, # Lidar Image
                         # 'point_cloud': _pc,
-                        'point_cloud2': _pc,
+                        'point_cloud2': _pc2,
                         'calib': calib, # Camera Intrinsic 
                         'tr_error': T, 
                         'rot_error': R, 
-                        # TODO: 'tr_error2': T2,
-                        # TODO: 'rot_error2': R2,
+                        'tr_error2': T_R,
+                        'rot_error2': R_R,
                         'seq': int(seq), 
                         'img_path': img_path,
                         'rgb_name': rgb_name + '.png', 
                         'item': item, 
                         'extrin': RT,
-                        'initial_RT': initial_RT
+                        'extrin_R': RT_R,
+                        'initial_RT': initial_RT,
+                        'initial_RT_R': initial_RT_R
                     }
         else:
             sample = {
                         'rgb': img, 
-                        # 'point_cloud': pc_in,
                         'point_cloud': _pc,
-                        # 'point_cloud2': _pc,
+                        'point_cloud2': _pc2,
                         'calib': calib,
                         'tr_error': T, 
                         'rot_error': R, 
+                        'tr_error2': T_R,
+                        'rot_error2': R_R,
                         'seq': int(seq),
                         'rgb_name': rgb_name, 
                         'item': item, 
-                        'extrin': RT
+                        'extrin': RT,
+                        'extrin_R': RT_R
                     }
 
         return sample
