@@ -57,9 +57,9 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 # noinspection PyUnusedLocal
 @ex.config
 def config():
-    checkpoints = './checkpoints/'
+    checkpoints = './properLCCNetcheckpoints/'
     dataset = 'kitti/odom' # 'kitti/raw'
-    data_folder = './data/dataset_medium'
+    data_folder = './properLCCNet/data/dataset_medium'
     use_reflectance = False
     val_sequence = 0
     epochs = 10_000
@@ -72,7 +72,7 @@ def config():
     network = 'Res_f1'
     optimizer = 'adam'
     resume = True
-    weights = './pretrained/kitti_iter5.tar'
+    weights = './properLCCNet/pretrained/kitti_iter5.tar'
     rescale_rot = 1.0
     rescale_transl = 2.0
     precision = "O0"
