@@ -65,14 +65,14 @@ def config():
     epochs = 10_000
     BASE_LEARNING_RATE = 3e-4  # 1e-4
     loss = 'combined'
-    max_t = 0.5 # 1.5, 1.0,  0.5,  0.2,  0.1
-    max_r = 5. # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 20
+    max_t = 0.1 # 1.5, 1.0,  0.5,  0.2,  0.1
+    max_r = 1. # 20.0, 10.0, 5.0,  2.0,  1.0
+    batch_size = 15
     num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
     resume = True
-    weights = './pretrained/kitti_iter3.tar'
+    weights = './pretrained/kitti_iter5.tar'
     rescale_rot = 1.0
     rescale_transl = 2.0
     precision = "O0"
@@ -274,7 +274,7 @@ def main(_config, _run, seed):
         loss_fn = CombinedLoss(_config['rescale_transl'], _config['rescale_rot'], _config['weight_point_cloud'])
     else:
         raise ValueError("Unknown Loss Function")
-
+    
     #runs = datetime.now().strftime('%b%d_%H-%M-%S') + "/"
     # train_writer = SummaryWriter('./logs/' + runs)
     #ex.info["tensorflow"] = {}
@@ -556,11 +556,14 @@ def main(_config, _run, seed):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []
+            lidar_input_R = []
             rgb_input = []
             lidar_gt = []
+            lidar_gt_R = []
             shape_pad_input = []
             real_shape_input = []
             pc_rotated_input = []
+            pc_rotated_input_R = []
 
             # gt pose
             sample['tr_error'] = sample['tr_error'].cuda()
@@ -572,13 +575,19 @@ def main(_config, _run, seed):
                 real_shape = [1208, 1920]
 
                 sample['point_cloud'][idx] = sample['point_cloud'][idx].cuda() # 变换到相机坐标系下的激光雷达点云
+                sample['point_cloud2'][idx] = sample['point_cloud2'][idx].cuda()
                 pc_lidar = sample['point_cloud'][idx].clone()
+                pc_lidar_R = sample['point_cloud2'][idx].clone()
 
                 if _config['max_depth'] < 80.:
                     pc_lidar = pc_lidar[:, pc_lidar[0, :] < _config['max_depth']].clone()
+                    pc_lidar_R = pc_lidar_R[:, pc_lidar_R[0, :] < _config['max_depth']].clone()
 
                 depth_gt, uv = lidar_project_depth(pc_lidar, sample['calib'][idx], real_shape) # image_shape
                 depth_gt /= _config['max_depth']
+
+                depth_gt_R, uv_R = lidar_project_depth(pc_lidar_R, sample['calib'][idx], real_shape) # image_shape
+                depth_gt_R /= _config['max_depth']
 
                 TF = transforms.Compose([
                     transforms.ToPILImage(),
@@ -590,6 +599,9 @@ def main(_config, _run, seed):
                 depth_gt = TF(depth_gt.cpu())
                 depth_gt = depth_gt.cuda()
 
+                depth_gt_R = TF(depth_gt_R.cpu())
+                depth_gt_R = depth_gt_R.cuda()
+
                 reflectance = None
                 if _config['use_reflectance']:
                     reflectance = sample['reflectance'][idx].cuda()
@@ -599,13 +611,24 @@ def main(_config, _run, seed):
                 T = mathutils.Matrix.Translation(sample['tr_error'][idx])
                 RT = T * R
 
+                R_R = mathutils.Quaternion(sample['rot_error2'][idx]).to_matrix()
+                R_R.resize_4x4()
+                T_R = mathutils.Matrix.Translation(sample['tr_error2'][idx])
+                RT_R = T_R * R_R
+
                 pc_rotated = rotate_back(sample['point_cloud'][idx], RT) # Pc` = RT * Pc
+                pc_rotated_R = rotate_back(sample['point_cloud2'][idx], RT_R) # Pc` = RT * Pc
+
 
                 if _config['max_depth'] < 80.:
                     pc_rotated = pc_rotated[:, pc_rotated[0, :] < _config['max_depth']].clone()
+                    pc_rotated_R = pc_rotated_R[:, pc_rotated_R[0, :] < _config['max_depth']].clone()
 
                 depth_img, uv = lidar_project_depth(pc_rotated, sample['calib'][idx], real_shape) # image_shape
                 depth_img /= _config['max_depth']
+
+                depth_img_R, uv_R = lidar_project_depth(pc_rotated_R, sample['calib'][idx], real_shape) # image_shape
+                depth_img_R /= _config['max_depth']
 
                 if _config['use_reflectance']:
                     # This need to be checked
@@ -636,19 +659,32 @@ def main(_config, _run, seed):
                 depth_img = F.pad(depth_img, shape_pad)
                 depth_gt = F.pad(depth_gt, shape_pad)
 
+                depth_img_R = F.pad(depth_img_R, shape_pad)
+                depth_gt_R = F.pad(depth_gt_R, shape_pad)
+
                 rgb_input.append(rgb)
                 lidar_input.append(depth_img)
                 lidar_gt.append(depth_gt)
+
+                lidar_input_R.append(depth_img_R)
+                lidar_gt_R.append(depth_gt_R)
+
                 real_shape_input.append(real_shape)
                 shape_pad_input.append(shape_pad)
                 pc_rotated_input.append(pc_rotated)
+                pc_rotated_input_R.append(pc_rotated_input_R)
 
             lidar_input = torch.stack(lidar_input)
+            lidar_input_R = torch.stack(lidar_input_R)
+
             rgb_input = torch.stack(rgb_input)
             rgb_show = rgb_input.clone()
             lidar_show = lidar_input.clone()
+            lidar_show_R = lidar_input_R.clone()
+            
             rgb_input = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
             lidar_input = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
+            lidar_input_R = F.interpolate(lidar_input_R, size=[256, 512], mode="bilinear")
 
             # model, rgb_img, refl_img, refl_img2, target_transl, target_rot, loss_fn, point_clouds, loss
             loss, trasl_e, rot_e, R_predicted,  T_predicted = val(model, rgb_input, lidar_input, lidar_input_R.cuda(),
