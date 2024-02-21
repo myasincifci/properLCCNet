@@ -59,7 +59,7 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 def config():
     checkpoints = './properLCCNetcheckpoints/'
     dataset = 'kitti/odom' # 'kitti/raw'
-    data_folder = './properLCCNet/data/dataset_medium'
+    data_folder = '/content/drive/MyDrive' #./properLCCNet/data/dataset_medium'
     use_reflectance = False
     val_sequence = 0
     epochs = 10_000
