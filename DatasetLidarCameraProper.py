@@ -325,11 +325,19 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         if h_mirror: # hard coded false
             calib[2] = (img.shape[2] / 2)*2 - calib[2]
             
-        diff = 25_000 - pc_in.shape[1] # TODO: smaller value for upper
-        _pc = torch.cat([pc_in, pc_in[:,:diff]], dim=1)
+        tresh = 50_000
+        # diff  = tresh - pc_in.shape[1]
+        # _pc = torch.cat([pc_in, torch.ones(pc_in.shape[0], diff)*1000.0], dim=1)
+        # diff_r  = tresh - pc2_in.shape[1]
+        # _pc2 = torch.cat([pc2_in, torch.ones(pc2_in.shape[0], diff_r)*1000.0], dim=1)
 
-        diff_R = 25_000 - pc2_in.shape[1]
-        _pc2 = torch.cat([pc2_in, pc2_in[:,:diff_R]], dim=1)
+        diff = tresh - pc_in.shape[1] # TODO: smaller value for upper
+        diff_R = tresh - pc2_in.shape[1]
+        idcs = torch.randint(pc_in.shape[1], (diff,))
+        idcs_R = torch.randint(pc2_in.shape[1], (diff_R,))
+
+        _pc = torch.cat([pc_in, pc_in[:,idcs]], dim=1)
+        _pc2 = torch.cat([pc2_in, pc2_in[:,idcs_R]], dim=1)
 
         if self.split == 'test':
             sample = {
