@@ -13,6 +13,8 @@ from torchvision import transforms
 
 import matplotlib.pyplot as plt
 
+import sys
+
 import math
 import os
 import random
@@ -198,6 +200,9 @@ def plot_both(rgb, lidar):
 
 @ex.automain
 def main(_config, _run, seed):
+    _config['batch_size'] = sys.argv[1]
+    print(f'Batch Size: {_config['batch_size']}')
+
     global EPOCH
     print('Loss Function Choice: {}'.format(_config['loss']))
 
