@@ -72,7 +72,7 @@ def config():
     network = 'Res_f1'
     optimizer = 'adam'
     resume = True
-    weights = './pretrained/kitti_iter5.tar'
+    weights = '/content/drive/MyDrive/LCCNet pre-trained model /kitti_iter5.tar'
     rescale_rot = 1.0
     rescale_transl = 2.0
     precision = "O0"
