@@ -59,7 +59,7 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 def config():
     checkpoints = './checkpoints/'
     dataset = 'kitti/odom' # 'kitti/raw'
-    data_folder = './data/kitti_full_rate_025-20240221T190558Z-001/kitti_full_rate_025'
+    data_folder = '/content/drive/MyDrive/kitti_full_feb_22'
     use_reflectance = False
     val_sequence = 0
     epochs = 10_000
