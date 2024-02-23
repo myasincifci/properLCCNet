@@ -99,10 +99,12 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         self.val_RT = []
         self.val_RT_R = []
         if split == 'val' or split == 'test':
-            val_RT_file = os.path.join(dataset_dir, 'sequences',
-                                       f'val_RT_left_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
-            val_RT_file_R = os.path.join(dataset_dir, 'sequences',
-                                       f'val_RT_right_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
+            # val_RT_file = os.path.join(dataset_dir, 'sequences',
+            #                            f'val_RT_left_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
+            # val_RT_file_R = os.path.join(dataset_dir, 'sequences',
+            #                            f'val_RT_right_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv')
+            val_RT_file = f'val_RT_left_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv'
+            val_RT_file_R = f'val_RT_right_seq{val_sequence}_{max_r:.2f}_{max_t:.2f}.csv'
             
             if os.path.exists(val_RT_file):
                 print(f'VAL SET: Using this file: {val_RT_file}')
