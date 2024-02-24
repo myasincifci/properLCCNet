@@ -44,6 +44,8 @@ from models.LCCNetDouble import LCCNet
 
 from quaternion_distances import quaternion_distance
 
+from tqdm import tqdm
+
 from tensorboardX import SummaryWriter
 from utils import (mat2xyzrpy, merge_inputs, overlay_imgs, quat2mat,
                    quaternion_from_matrix, rotate_back, rotate_forward,
@@ -69,7 +71,7 @@ def config():
     loss = 'combined'
     max_t = 0.1 # 1.5, 1.0,  0.5,  0.2,  0.1
     max_r = 1. # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 15
+    batch_size = 32
     num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
@@ -371,7 +373,7 @@ def main(_config, _run, seed):
 
         ## Training ##
         time_for_50ep = time.time()
-        for batch_idx, sample in enumerate(TrainImgLoader):
+        for batch_idx, sample in enumerate(tqdm(TrainImgLoader)):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []
@@ -555,7 +557,7 @@ def main(_config, _run, seed):
         total_val_r = 0.
 
         local_loss = 0.0
-        for batch_idx, sample in enumerate(ValImgLoader):
+        for batch_idx, sample in enumerate(tqdm(ValImgLoader)):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []
