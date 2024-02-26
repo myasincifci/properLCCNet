@@ -71,11 +71,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 def config():
     dataset = 'kitti/odom'
     # data_folder = '/home/wangshuo/Datasets/KITTI/odometry_color/'
-    data_folder = './data/dataset_small'
+    data_folder = './data/kitti_full_rate_025-20240221T190558Z-001/kitti_full_rate_025'
     test_sequence = 0
     use_prev_output = False
-    max_t = 0.5
-    max_r = 5.
+    max_t = 1.5
+    max_r = 20.
     occlusion_kernel = 5
     occlusion_threshold = 3.0
     network = 'Res_f1'
@@ -103,13 +103,11 @@ weights = [
 #    './pretrained/kitti_iter3.tar',
 #    './pretrained/kitti_iter4.tar',
 #    './pretrained/kitti_iter5.tar',
-    './pretrained/custom.tar',
-    './pretrained/custom.tar',
-    './pretrained/custom.tar',
-    './pretrained/custom.tar',
-    './pretrained/custom.tar',
-    './pretrained/custom.tar',
-
+    './pretrained/own_1_checkpoint_r20.00_t1.50_e151_1.663.tar',
+    './pretrained/own_2_checkpoint_r10.00_t1.00_e57_1.155.tar',
+    './pretrained/own_3_checkpoint_r5.00_t0.50_e77_0.579.tar',
+    './pretrained/own_4_checkpoint_r2.00_t0.20_e84_0.209.tar',  
+    './pretrained/own_5_checkpoint_r1.00_t0.10_e164_0.098.tar',    
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

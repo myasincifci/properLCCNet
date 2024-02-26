@@ -27,7 +27,7 @@ import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
 import torch.nn as nn
-
+from tqdm import tqdm
 from sacred import Experiment
 from sacred.utils import apply_backspaces_and_linefeeds
 
@@ -63,16 +63,16 @@ def config():
     use_reflectance = False
     val_sequence = 0
     epochs = 10_000
-    BASE_LEARNING_RATE = 3e-4  # 1e-4
+    BASE_LEARNING_RATE = 1e-4  # 3e-4
     loss = 'combined'
-    max_t = 0.1 # 1.5, 1.0,  0.5,  0.2,  0.1
-    max_r = 1. # 20.0, 10.0, 5.0,  2.0,  1.0
+    max_t = 0.2 # 1.5, 1.0,  0.5,  0.2,  0.1
+    max_r = 2.0 # 20.0, 10.0, 5.0,  2.0,  1.0
     batch_size = 15
     num_worker = 0
     network = 'Res_f1'
     optimizer = 'adam'
     resume = True
-    weights = './pretrained/kitti_iter5.tar'
+    weights = '/home/yasin/repos/properLCCNet/pretrained/kitti_iter4.tar'
     rescale_rot = 1.0
     rescale_transl = 2.0
     precision = "O0"
@@ -368,7 +368,7 @@ def main(_config, _run, seed):
 
         ## Training ##
         time_for_50ep = time.time()
-        for batch_idx, sample in enumerate(TrainImgLoader):
+        for batch_idx, sample in enumerate(tqdm(TrainImgLoader)):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []
@@ -552,7 +552,7 @@ def main(_config, _run, seed):
         total_val_r = 0.
 
         local_loss = 0.0
-        for batch_idx, sample in enumerate(ValImgLoader):
+        for batch_idx, sample in enumerate(tqdm(ValImgLoader)):
             #print(f'batch {batch_idx+1}/{len(TrainImgLoader)}', end='\r')
             start_time = time.time()
             lidar_input = []

@@ -177,8 +177,8 @@ class DatasetLidarCameraKittiOdometry(Dataset):
         normalization = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
 
-        if False:
-        # if self.split == 'train':
+        # if False:
+        if self.split == 'train':
             color_transform = transforms.ColorJitter(0.1, 0.1, 0.1)
             rgb = color_transform(rgb)
             if flip:
