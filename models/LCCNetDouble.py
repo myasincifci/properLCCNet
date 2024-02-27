@@ -537,6 +537,9 @@ class LCCNet(nn.Module):
         # print(c16.size())
         # print("c26.size()")
         # print(c26.size())
+        
+        # c16 = torch.cat((c16, c16), dim=0)
+        
         corr6 = self.correlate(c16, c26)
         # print("corr6.size()")
         # print(corr6.size())

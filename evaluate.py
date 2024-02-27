@@ -34,7 +34,7 @@ from skimage import io
 from tqdm import tqdm
 import time
 
-from models.LCCNet import LCCNet
+from models.LCCNetDouble import LCCNet
 # from models.LCCNetDouble import LCCNet
 # from DatasetLidarCamera import DatasetLidarCameraKittiOdometry
 from DatasetLidarCameraProper import DatasetLidarCameraKittiOdometry
@@ -103,11 +103,14 @@ weights = [
 #    './pretrained/kitti_iter3.tar',
 #    './pretrained/kitti_iter4.tar',
 #    './pretrained/kitti_iter5.tar',
+    
     './pretrained/own_1_checkpoint_r20.00_t1.50_e151_1.663.tar',
     './pretrained/own_2_checkpoint_r10.00_t1.00_e57_1.155.tar',
     './pretrained/own_3_checkpoint_r5.00_t0.50_e77_0.579.tar',
     './pretrained/own_4_checkpoint_r2.00_t0.20_e84_0.209.tar',  
     './pretrained/own_5_checkpoint_r1.00_t0.10_e164_0.098.tar',    
+
+    # './pretrained/own_1_checkpoint_r20.00_t1.50_e151_1.663.tar'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -200,8 +203,8 @@ def main(_config, seed):
     def init_fn(x):
         return _init_fn(x, seed)
 
-    num_worker = 0
-    batch_size = 1
+    num_worker = 4
+    batch_size = 1 # 23
 
     TestImgLoader = torch.utils.data.DataLoader(dataset=dataset_val,
                                                 shuffle=False,
@@ -296,6 +299,15 @@ def main(_config, seed):
     errors_rpy = []
     all_RTs = []
     mis_calib_list = []
+    
+    errors_r_R = []
+    errors_t_R = []
+    errors_t2_R = []
+    errors_xyz_R = []
+    errors_rpy_R = []
+    all_RTs_R = []
+    mis_calib_list_R = []
+
     total_time = 0
 
     prev_tr_error = None
@@ -307,6 +319,11 @@ def main(_config, seed):
         errors_t2.append([])
         errors_rpy.append([])
 
+        errors_r_R.append([])
+        errors_t_R.append([])
+        errors_t2_R.append([])
+        errors_rpy_R.append([])
+
     for batch_idx, sample in enumerate(tqdm(TestImgLoader)):
         N = 100 # 500
         # if batch_idx > 200:
@@ -315,12 +332,22 @@ def main(_config, seed):
         log_string = [str(batch_idx)]
 
         lidar_input = []
+        lidar_input_R = []
+
         rgb_input = []
+        
         lidar_gt = []
+        lidar_gt_R = []
+
         shape_pad_input = []
         real_shape_input = []
+
         pc_rotated_input = []
+        pc_rotated_input_R = []
+
         RTs = []
+        RTs_R = []
+
         shape_pad = [0, 0, 0, 0]
         outlier_filter = False
 
@@ -341,11 +368,18 @@ def main(_config, seed):
             sample['point_cloud'][idx] = sample['point_cloud'][idx].cuda()  # 变换到相机坐标系下的激光雷达点云
             pc_lidar = sample['point_cloud'][idx].clone()
 
+            sample['point_cloud2'][idx] = sample['point_cloud2'][idx]  # 变换到相机坐标系下的激光雷达点云
+            pc_lidar_2 = sample['point_cloud2'][idx].clone()
+
             if _config['max_depth'] < 80.:
                 pc_lidar = pc_lidar[:, pc_lidar[0, :] < _config['max_depth']].clone()
+                pc_lidar_2 = pc_lidar_2[:, pc_lidar_2[0, :] < _config['max_depth']].clone()
 
             depth_gt, uv_gt, pc_gt_valid = lidar_project_depth(pc_lidar, sample['calib'][idx], real_shape)  # image_shape
             depth_gt /= _config['max_depth']
+
+            depth_gt_R, uv_gt_R, pc_gt_valid_R = lidar_project_depth(pc_lidar_2, sample['calib'][idx], real_shape)  # image_shape
+            depth_gt_R /= _config['max_depth']
 
             TF = transforms.Compose([
                 transforms.ToPILImage(),
@@ -357,14 +391,17 @@ def main(_config, seed):
             depth_gt = TF(depth_gt.cpu())
             depth_gt = depth_gt.cuda()
 
-            if _config['save_image']:
-                # save the Lidar pointcloud
-                pcl_lidar = o3.PointCloud()
-                pc_lidar = pc_lidar.detach().cpu().numpy()
-                pcl_lidar.points = o3.Vector3dVector(pc_lidar.T[:, :3])
+            depth_gt_R = TF(depth_gt_R.cpu())
+            depth_gt_R = depth_gt_R.cuda()
 
-                # o3.draw_geometries(downpcd)
-                o3.write_point_cloud(pc_lidar_path + '/{}.pcd'.format(batch_idx), pcl_lidar)
+            # if _config['save_image']:
+            #     # save the Lidar pointcloud
+            #     pcl_lidar = o3.PointCloud()
+            #     pc_lidar = pc_lidar.detach().cpu().numpy()
+            #     pcl_lidar.points = o3.Vector3dVector(pc_lidar.T[:, :3])
+
+            #     # o3.draw_geometries(downpcd)
+            #     o3.write_point_cloud(pc_lidar_path + '/{}.pcd'.format(batch_idx), pcl_lidar)
 
 
             R = quat2mat(sample['rot_error'][idx])
@@ -372,31 +409,41 @@ def main(_config, seed):
             RT_inv = torch.mm(T, R)
             RT = RT_inv.clone().inverse()
 
+            R_R = quat2mat(sample['rot_error2'][idx])
+            T_R = tvector2mat(sample['tr_error2'][idx])
+            RT_inv_R = torch.mm(T_R, R_R)
+            RT_R = RT_inv_R.clone().inverse()
+
             pc_rotated = rotate_back(sample['point_cloud'][idx], RT_inv)  # Pc` = RT * Pc
+            pc_rotated_R = rotate_back(sample['point_cloud2'][idx], RT_inv_R)  # Pc` = RT * Pc
 
             if _config['max_depth'] < 80.:
                 pc_rotated = pc_rotated[:, pc_rotated[0, :] < _config['max_depth']].clone()
+                pc_rotated_R = pc_rotated_R[:, pc_rotated_R[0, :] < _config['max_depth']].clone()
 
             depth_img, uv_input, pc_input_valid = lidar_project_depth(pc_rotated, sample['calib'][idx], real_shape)  # image_shape
             depth_img /= _config['max_depth']
+
+            depth_img_R, uv_input_R, pc_input_valid_R = lidar_project_depth(pc_rotated_R, sample['calib'][idx], real_shape)  # image_shape
+            depth_img_R /= _config['max_depth']
 
             if _config['outlier_filter'] and uv_input.shape[0] <= _config['outlier_filter_th']:
                 outlier_filter = True
             else:
                 outlier_filter = False
 
-            if _config['save_image']:
-                # save the RGB input pointcloud
-                img = cv2.imread(sample['img_path'][0])
-                R = img[uv_input[:, 1], uv_input[:, 0], 0] / 255
-                G = img[uv_input[:, 1], uv_input[:, 0], 1] / 255
-                B = img[uv_input[:, 1], uv_input[:, 0], 2] / 255
-                pcl_input = o3.PointCloud()
-                pcl_input.points = o3.Vector3dVector(pc_input_valid[:, :3])
-                pcl_input.colors = o3.Vector3dVector(np.vstack((R, G, B)).T)
+            # if _config['save_image']:
+            #     # save the RGB input pointcloud
+            #     img = cv2.imread(sample['img_path'][0])
+            #     R = img[uv_input[:, 1], uv_input[:, 0], 0] / 255
+            #     G = img[uv_input[:, 1], uv_input[:, 0], 1] / 255
+            #     B = img[uv_input[:, 1], uv_input[:, 0], 2] / 255
+            #     pcl_input = o3.PointCloud()
+            #     pcl_input.points = o3.Vector3dVector(pc_input_valid[:, :3])
+            #     pcl_input.colors = o3.Vector3dVector(np.vstack((R, G, B)).T)
 
-                # o3.draw_geometries(downpcd)
-                o3.write_point_cloud(pc_input_path + '/{}.pcd'.format(batch_idx), pcl_input)
+            #     # o3.draw_geometries(downpcd)
+            #     o3.write_point_cloud(pc_input_path + '/{}.pcd'.format(batch_idx), pcl_input)
 
             # PAD ONLY ON RIGHT AND BOTTOM SIDE
             rgb = sample['rgb'][idx].cuda()
@@ -406,37 +453,54 @@ def main(_config, seed):
             shape_pad[1] = (img_shape[1] - rgb.shape[2])  # // 2 + 1
 
             rgb = F.pad(rgb, shape_pad)
+
             depth_img = F.pad(depth_img, shape_pad)
             depth_gt = F.pad(depth_gt, shape_pad)
 
+            depth_img_R = F.pad(depth_img_R, shape_pad)
+            depth_gt_R = F.pad(depth_gt_R, shape_pad)
+
             rgb_input.append(rgb)
+
             lidar_input.append(depth_img)
             lidar_gt.append(depth_gt)
+
+            lidar_input_R.append(depth_img_R)
+            lidar_gt_R.append(depth_gt_R)
+
             real_shape_input.append(real_shape)
             shape_pad_input.append(shape_pad)
+
             pc_rotated_input.append(pc_rotated)
+            pc_rotated_input_R.append(pc_rotated_R)
+
             RTs.append(RT)
+            RTs_R.append(RT_R)
 
         if outlier_filter:
             continue
 
         lidar_input = torch.stack(lidar_input)
+        lidar_input_R = torch.stack(lidar_input_R)
+
         rgb_input = torch.stack(rgb_input)
         rgb_resize = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
+        
         lidar_resize = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
+        lidar_resize_R = F.interpolate(lidar_input_R, size=[256, 512], mode="bilinear")
 
 
-        if _config['save_image']:
-            out0 = overlay_imgs(rgb_input[0], lidar_input)
-            out0 = out0[:376, :1241, :]
-            cv2.imwrite(os.path.join(input_path, sample['rgb_name'][0]), out0[:, :, [2, 1, 0]]*255)
-            out1 = overlay_imgs(rgb_input[0], lidar_gt[0].unsqueeze(0))
-            out1 = out1[:376, :1241, :]
-            cv2.imwrite(os.path.join(gt_path, sample['rgb_name'][0]), out1[:, :, [2, 1, 0]]*255)
+        # if _config['save_image']:
+        #     out0 = overlay_imgs(rgb_input[0], lidar_input)
+        #     out0 = out0[:376, :1241, :]
+        #     cv2.imwrite(os.path.join(input_path, sample['rgb_name'][0]), out0[:, :, [2, 1, 0]]*255)
+        #     out1 = overlay_imgs(rgb_input[0], lidar_gt[0].unsqueeze(0))
+        #     out1 = out1[:376, :1241, :]
+        #     cv2.imwrite(os.path.join(gt_path, sample['rgb_name'][0]), out1[:, :, [2, 1, 0]]*255)
 
-            depth_img = depth_img.detach().cpu().numpy()
-            depth_img = (depth_img / np.max(depth_img)) * 255
-            cv2.imwrite(os.path.join(depth_path, sample['rgb_name'][0]), depth_img[0, :376, :1241])
+        #     depth_img = depth_img.detach().cpu().numpy()
+        #     depth_img = (depth_img / np.max(depth_img)) * 255
+        #     cv2.imwrite(os.path.join(depth_path, sample['rgb_name'][0]), depth_img[0, :376, :1241])
 
         if show:
             out0 = overlay_imgs(rgb_input[0], lidar_input)
@@ -446,17 +510,29 @@ def main(_config, seed):
             cv2.waitKey(1)
 
         rgb = rgb_input.to(device)
+        
         lidar = lidar_input.to(device)
+        lidar_R = lidar_input_R.to(device)
+
         rgb_resize = rgb_resize.to(device)
+
         lidar_resize = lidar_resize.to(device)
+        lidar_resize_R = lidar_resize_R.to(device)
 
         target_transl = sample['tr_error'].to(device)
         target_rot = sample['rot_error'].to(device)
+
+        target_transl_R = sample['tr_error2'].to(device)
+        target_rot_R = sample['rot_error2'].to(device)
 
         # the initial calibration errors before sensor calibration
         RT1 = RTs[0]
         mis_calib = torch.stack(sample['initial_RT'])[1:]
         mis_calib_list.append(mis_calib)
+
+        RT1_R = RTs_R[0]
+        mis_calib_R = torch.stack(sample['initial_RT_R'])[1:]
+        mis_calib_list_R.append(mis_calib_R)
 
         T_composed = RT1[:3, 3]
         R_composed = quaternion_from_matrix(RT1)
@@ -465,15 +541,34 @@ def main(_config, seed):
         errors_r[0].append(quaternion_distance(R_composed.unsqueeze(0),
                                                torch.tensor([1., 0., 0., 0.], device=R_composed.device).unsqueeze(0),
                                                R_composed.device))
+        
+        T_composed_R = RT1_R[:3, 3]
+        R_composed_R = quaternion_from_matrix(RT1_R)
+        errors_t_R[0].append(T_composed_R.norm().item())
+        errors_t2_R[0].append(T_composed_R)
+        errors_r_R[0].append(quaternion_distance(R_composed_R.unsqueeze(0),
+                                               torch.tensor([1., 0., 0., 0.], device=R_composed_R.device).unsqueeze(0),
+                                               R_composed_R.device))
+
         # rpy_error = quaternion_to_tait_bryan(R_composed)
         rpy_error = mat2xyzrpy(RT1)[3:]
+        rpy_error_R = mat2xyzrpy(RT1_R)[3:]
 
         rpy_error *= (180.0 / 3.141592)
+        rpy_error_R *= (180.0 / 3.141592)
+
         errors_rpy[0].append(rpy_error)
+        errors_rpy_R[0].append(rpy_error_R)
+
         log_string += [str(errors_t[0][-1]), str(errors_r[0][-1]), str(errors_t2[0][-1][0].item()),
                        str(errors_t2[0][-1][1].item()), str(errors_t2[0][-1][2].item()),
                        str(errors_rpy[0][-1][0].item()), str(errors_rpy[0][-1][1].item()),
                        str(errors_rpy[0][-1][2].item())]
+        
+        log_string += [str(errors_t_R[0][-1]), str(errors_r_R[0][-1]), str(errors_t2_R[0][-1][0].item()),
+                       str(errors_t2_R[0][-1][1].item()), str(errors_t2_R[0][-1][2].item()),
+                       str(errors_rpy_R[0][-1][0].item()), str(errors_rpy_R[0][-1][1].item()),
+                       str(errors_rpy_R[0][-1][2].item())]
 
         # if batch_idx == 0.:
         #     print(f'Initial T_erorr: {errors_t[0]}')
@@ -489,7 +584,7 @@ def main(_config, seed):
                 if _config['iterative_method'] == 'single_range' or _config['iterative_method'] == 'single':
                     T_predicted, R_predicted = models[0](rgb_resize, lidar_resize)
                 elif _config['iterative_method'] == 'multi_range':
-                    T_predicted, R_predicted = models[iteration](rgb_resize, lidar_resize)
+                    T_predicted, R_predicted = models[iteration](rgb_resize, lidar_resize, lidar_resize_R)
                 run_time = time.time() - t1
 
                 if _config['rot_transl_separated'] and iteration == 0:
@@ -504,8 +599,10 @@ def main(_config, seed):
                 RTs.append(torch.mm(RTs[iteration], RT_predicted)) # inv(H_gt)*H_pred_1*H_pred_2*.....H_pred_n
                 if iteration == 0:
                     rotated_point_cloud = pc_rotated_input[0]
+                    rotated_point_cloud_R = pc_rotated_input_R[0]
                 else:
                     rotated_point_cloud = rotated_point_cloud
+                    rotated_point_cloud_R = rotated_point_cloud_R
 
                 rotated_point_cloud = rotate_forward(rotated_point_cloud, RT_predicted) # H_pred*X_init
 
