@@ -98,19 +98,19 @@ def config():
     out_fig_lg = 'EN' # [EN, CN]
 
 weights = [
+    # Not finetuned
 #    './pretrained/kitti_iter1.tar',
 #    './pretrained/kitti_iter2.tar',
 #    './pretrained/kitti_iter3.tar',
 #    './pretrained/kitti_iter4.tar',
 #    './pretrained/kitti_iter5.tar',
     
+    # Finetuned
     './pretrained/own_1_checkpoint_r20.00_t1.50_e151_1.663.tar',
     './pretrained/own_2_checkpoint_r10.00_t1.00_e57_1.155.tar',
     './pretrained/own_3_checkpoint_r5.00_t0.50_e77_0.579.tar',
     './pretrained/own_4_checkpoint_r2.00_t0.20_e84_0.209.tar',  
     './pretrained/own_5_checkpoint_r1.00_t0.10_e164_0.098.tar',    
-
-    # './pretrained/own_1_checkpoint_r20.00_t1.50_e151_1.663.tar'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

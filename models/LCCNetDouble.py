@@ -479,7 +479,7 @@ class LCCNet(nn.Module):
         # print(lidar1.size())
         
         #double rgb
-        rgb = torch.cat((rgb, rgb), dim=0)
+        # rgb = torch.cat((rgb, rgb), dim=0)
         # print()
         # print("rgb double.size()")
         # print(rgb.size())
@@ -538,7 +538,7 @@ class LCCNet(nn.Module):
         # print("c26.size()")
         # print(c26.size())
         
-        # c16 = torch.cat((c16, c16), dim=0)
+        c16 = torch.cat((c16, c16), dim=0)
         
         corr6 = self.correlate(c16, c26)
         # print("corr6.size()")
