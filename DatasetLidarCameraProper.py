@@ -272,7 +272,7 @@ class DatasetLidarCameraKittiOdometry(Dataset):
 
             R_R = mathutils.Euler((radians(img_rotation), 0, 0), 'XYZ')
             T_R = mathutils.Vector((0., 0., 0.))
-            pc2_in = rotate_forward(pc_in, R, T)
+            pc2_in = rotate_forward(pc2_in, R_R, T_R)
 
         if self.split == 'train': # Apply random error transform TODO: also for RT2
             max_angle = self.max_r
@@ -307,10 +307,10 @@ class DatasetLidarCameraKittiOdometry(Dataset):
             transl_y_R = initial_RT_R[2]
             transl_z_R = initial_RT_R[3]
 
-        R = mathutils.Euler((rotx, roty, rotz), 'XYZ') # convert rotation to euler TODO: also RT2
+        R = mathutils.Euler((rotx, roty, rotz), 'XYZ') # convert rotation to euler 
         T = mathutils.Vector((transl_x, transl_y, transl_z)) # convert translation to vector
 
-        R_R = mathutils.Euler((rotx_R, roty_R, rotz_R), 'XYZ') # convert rotation to euler TODO: also RT2
+        R_R = mathutils.Euler((rotx_R, roty_R, rotz_R), 'XYZ') # convert rotation to euler 
         T_R = mathutils.Vector((transl_x_R, transl_y_R, transl_z_R)) # convert translation to vector
 
         # invert R and T because they are the random error we have applied and we want to predcit the transform that can fix the error.

@@ -476,6 +476,9 @@ def main(_config, _run, seed):
             lidar_input = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
             lidar_input_R = F.interpolate(lidar_input_R, size=[256, 512], mode="bilinear")
             end_preprocess = time.time()
+
+            # rgb_input = torch.rand_like(rgb_input)# TODO: sanity check, remove
+
             loss, R_predicted,  T_predicted = train(model, optimizer, rgb_input, lidar_input, lidar_input_R,
                                                    torch.cat((sample['tr_error'], sample['tr_error2'].cuda()), dim=0), 
                                                    torch.cat((sample['rot_error'], sample['rot_error2'].cuda()), dim=0),
@@ -685,6 +688,8 @@ def main(_config, _run, seed):
             rgb_input = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
             lidar_input = F.interpolate(lidar_input, size=[256, 512], mode="bilinear")
             lidar_input_R = F.interpolate(lidar_input_R, size=[256, 512], mode="bilinear")
+
+            # rgb_input = torch.rand_like(rgb_input)# TODO: sanity check, remove
 
             # model, rgb_img, refl_img, refl_img2, target_transl, target_rot, loss_fn, point_clouds, loss
             loss, trasl_e, rot_e, R_predicted,  T_predicted = val(model, rgb_input, lidar_input, lidar_input_R.cuda(),
